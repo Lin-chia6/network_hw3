@@ -22,6 +22,10 @@ char *ip_ttoa(u_int8_t flag);
 char *ip_ftoa(u_int16_t flag);
 char *tcp_ftoa(u_int8_t flag);
 
+int specify = 0;
+int decide;
+char flag[4] = "";
+
 int main(int argc, const char * argv[]) {
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *handle = NULL;
@@ -38,21 +42,29 @@ int main(int argc, const char * argv[]) {
         exit(1);
     }//end if
 
-    if(strcmp(argv[1],"-r")==0)
-    {
-        //printf("%s\n", argv[1]);
-        strcpy(filename,argv[2]);
-        handle = pcap_open_offline(filename, errbuf);
-        if(!handle) {
-            fprintf(stderr, "pcap_open_offline(): %s\n", errbuf);
-            exit(1);
-        }
-        //printf("Open: %s\n", filename);
+    
+    //printf("%s\n", argv[1]);
+    strcpy(filename,argv[2]);
+    handle = pcap_open_offline(filename, errbuf);
+    if(!handle) {
+        fprintf(stderr, "pcap_open_offline(): %s\n", errbuf);
+        exit(1);
     }
+    //printf("Open: %s\n", filename);
 
     //start capture
-    int in = 0;
-    pcap_loop(handle, -1, pcap_callback, (u_char*)&in);
+    int in = 0, i;
+    i = atoi(argv[1]);
+    if( argc > 3 )
+    {
+        //printf("%s\n", argv[3]);
+        if(strcmp(argv[3],"-s")==0)
+        {
+            strcpy(flag, argv[4]);
+            specify = 1;
+        }
+    }
+    pcap_loop(handle, i, pcap_callback, (u_char*)&in);
 
     //free
     pcap_close(handle);
@@ -77,14 +89,28 @@ char *ip_ntoa(void *i) {
 }//end ip_ntoa
 
 void pcap_callback(u_char *arg, const struct pcap_pkthdr *header, const u_char *content) {
+
+    struct ip *ip = (struct ip *)(content + ETHER_HDR_LEN);
     static int d = 0;
+    u_char protocol = ip->ip_p;
+    if( specify == 1 )
+    {
+        if( strncmp(flag, "tcp", 3) == 0)
+        {
+            if( protocol != IPPROTO_TCP ) return;
+        }
+        else 
+        {
+            if( protocol != IPPROTO_UDP ) return;
+        }
+    }
 
     printf("No. %d\n", ++d);
 
     //print header
     printf("Recieved time: %s", ctime((const time_t *)&header->ts.tv_sec));
     printf("Length: %d bytes\n", header->len);
-    //printf("Capture length: %d bytes\n", header->caplen);
+    printf("Capture length: %d bytes\n", header->caplen);
 
     //dump ethernet
     dump_ethernet(header->caplen, content);
@@ -164,7 +190,7 @@ void dump_ip(u_int32_t length, const u_char *content) {
     //printf("+---------------------------------------------------+\n");
     printf(" - Destination IP Address: %s\n", ip_ntoa(&ip->ip_dst));
     //printf("+---------------------------------------------------+\n");
-
+    
     switch (protocol) {
         case IPPROTO_UDP:
             dump_udp(length, content);
